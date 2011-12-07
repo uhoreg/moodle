@@ -2867,8 +2867,8 @@
         <FIELD NAME="timestamp" TYPE="int" LENGTH="10" NOTNULL="true" UNSIGNED="true" SEQUENCE="false" PREVIOUS="nonce"/>
       </FIELDS>
       <KEYS>
-        <KEY NAME="primary" TYPE="primary" FIELDS="id" NEXT="tokenid"/>
-        <KEY NAME="credentialsid" TYPE="foreign" FIELDS="clientcredentialsid" REFTABLE="oauth_client_credentials" REFFIELDS="id" PREVIOUS="primary"/>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id" NEXT="credentialsid"/>
+        <KEY NAME="credentialsid" TYPE="foreign" FIELDS="credentialsid" REFTABLE="oauth_client_credentials" REFFIELDS="id" PREVIOUS="primary"/>
       </KEYS>
       <INDEXES>
         <INDEX NAME="credentialsnonce_idx" UNIQUE="true" FIELDS="credentialsid, nonce" NEXT="timestamp_idx"/>
