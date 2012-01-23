@@ -6724,6 +6724,30 @@ FROM
         upgrade_main_savepoint(true, 2011070103.04);
     }
 
+    if ($oldversion < 2011070104.05) {
+
+        // Define field id to be added to oauth_client_credentials
+        $table = new xmldb_table('oauth_client_credentials');
+        $field = new xmldb_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null, null);
+
+        // Conditionally launch add field id
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Define field id to be added to oauth_nonces
+        $table = new xmldb_table('oauth_nonces');
+        $field = new xmldb_field('id', XMLDB_TYPE_INTEGER, '10', XMLDB_UNSIGNED, XMLDB_NOTNULL, XMLDB_SEQUENCE, null, null);
+
+        // Conditionally launch add field id
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Main savepoint reached
+        upgrade_main_savepoint(true, 2011070104.05);
+    }
+
     return true;
 }
 
