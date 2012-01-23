@@ -1626,6 +1626,7 @@ function make_timestamp($year, $month=1, $day=1, $hour=0, $minute=0, $second=0, 
     $totalsecs = abs($totalsecs);
 
     if (!$str) {  // Create the str structure the slow way
+        $str = new stdClass();
         $str->day   = get_string('day');
         $str->days  = get_string('days');
         $str->hour  = get_string('hour');
@@ -2529,7 +2530,11 @@ function require_login($courseorid = NULL, $autologinguest = true, $cm = NULL, $
 
         $access = false;
 
-        if (is_viewing($coursecontext, $USER)) {
+        if (is_role_switched($course->id)) {
+            // ok, user had to be inside this course before the switch
+            $access = true;
+
+        } else if (is_viewing($coursecontext, $USER)) {
             // ok, no need to mess with enrol
             $access = true;
 
@@ -3294,7 +3299,8 @@ function create_user_record($username, $password, $auth = 'manual') {
     }
     $newuser->confirmed = 1;
     $newuser->lastip = getremoteaddr();
-    $newuser->timemodified = time();
+    $newuser->timecreated = time();
+    $newuser->timemodified = $newuser->timecreated;
     $newuser->mnethostid = $CFG->mnet_localhost_id;
 
     $newuser->id = $DB->insert_record('user', $newuser);
@@ -3357,6 +3363,7 @@ function update_user_record($username) {
         }
         if ($newuser) {
             $newuser['id'] = $oldinfo->id;
+            $newuser['timemodified'] = time();
             $DB->update_record('user', $newuser);
             // fetch full user record for the event, the complete user data contains too much info
             // and we want to be consistent with other places that trigger this event
@@ -4616,7 +4623,7 @@ function email_to_user($user, $from, $subject, $messagetext, $messagehtml='', $a
     }
 
     // skip mail to suspended users
-    if (isset($user->auth) && $user->auth=='nologin') {
+    if ((isset($user->auth) && $user->auth=='nologin') or (isset($user->suspended) && $user->suspended)) {
         return true;
     }
 
@@ -6810,7 +6817,7 @@ class emoticon_manager {
  * @return string The now encrypted data
  */
 function rc4encrypt($data) {
-    $password = 'nfgjeingjk';
+    $password = get_site_identifier();
     return endecrypt($password, $data, '');
 }
 
@@ -6823,7 +6830,7 @@ function rc4encrypt($data) {
  * @return string The now decrypted data
  */
 function rc4decrypt($data) {
-    $password = 'nfgjeingjk';
+    $password = get_site_identifier();
     return endecrypt($password, $data, 'de');
 }
 
@@ -7310,32 +7317,66 @@ function get_list_of_plugins($directory='mod', $exclude='', $basedir='') {
     return $plugins;
 }
 
+/**
+* Invoke plugin's callback functions
+*
+* @param string $type plugin type e.g. 'mod'
+* @param string $name plugin name
+* @param string $feature feature name
+* @param string $action feature's action
+* @param array $params parameters of callback function, should be an array
+* @param mixed $default default value if callback function hasn't been defined, or if it retursn null.
+* @return mixed
+*
+* @todo Decide about to deprecate and drop plugin_callback() - MDL-30743
+*/
+function plugin_callback($type, $name, $feature, $action, $params = null, $default = null) {
+    return component_callback($type . '_' . $name, $feature . '_' . $action, (array) $params, $default);
+}
 
 /**
- * invoke plugin's callback functions
+ * Invoke component's callback functions
  *
- * @param string $type Plugin type e.g. 'mod'
- * @param string $name Plugin name
- * @param string $feature Feature code (FEATURE_xx constant)
- * @param string $action Feature's action
- * @param string $options parameters of callback function, should be an array
- * @param mixed $default default value if callback function hasn't been defined
+ * @param string $component frankenstyle component name, e.g. 'mod_quiz'
+ * @param string $function the rest of the function name, e.g. 'cron' will end up calling 'mod_quiz_cron'
+ * @param array $params parameters of callback function
+ * @param mixed $default default value if callback function hasn't been defined, or if it retursn null.
  * @return mixed
  */
-function plugin_callback($type, $name, $feature, $action, $options = null, $default=null) {
-    global $CFG;
+function component_callback($component, $function, array $params = array(), $default = null) {
+    global $CFG; // this is needed for require_once() bellow
 
-    $name = clean_param($name, PARAM_SAFEDIR);
-    $function = $name.'_'.$feature.'_'.$action;
-    $file = get_component_directory($type . '_' . $name) . '/lib.php';
+    $cleancomponent = clean_param($component, PARAM_SAFEDIR);
+    if (empty($cleancomponent)) {
+        throw new coding_exception('Invalid component used in plugin/component_callback():' . $component);
+    }
+    $component = $cleancomponent;
+
+    list($type, $name) = normalize_component($component);
+    $component = $type . '_' . $name;
+
+    $oldfunction = $name.'_'.$function;
+    $function = $component.'_'.$function;
+
+    $dir = get_component_directory($component);
+    if (empty($dir)) {
+        throw new coding_exception('Invalid component used in plugin/component_callback():' . $component);
+    }
 
     // Load library and look for function
-    if (file_exists($file)) {
-        require_once($file);
+    if (file_exists($dir.'/lib.php')) {
+        require_once($dir.'/lib.php');
     }
+
+    if (!function_exists($function) and function_exists($oldfunction)) {
+        // In Moodle 2.2 and greater this will result in a debugging notice however
+        // for 2.1+ we tolerate it.
+        $function = $oldfunction;
+    }
+
     if (function_exists($function)) {
         // Function exists, so just return function result
-        $ret = call_user_func_array($function, (array)$options);
+        $ret = call_user_func_array($function, $params);
         if (is_null($ret)) {
             return $default;
         } else {
